@@ -1,0 +1,55 @@
+run = ["run1", "run2"]
+mode = ["2h", "4h"]
+tracktype = ["LL", "DD"]
+#bkgcat = ["highbdt", "lowbdt", "loweranduppersb", "nominal"]
+bkgcat = ["nominal"]
+
+signal = {}
+signal["2h_LL"] = {"mean": 5278.2, "reso": 8.9}
+signal["2h_DD"] = {"mean": 5279.1, "reso": 7.7}
+signal["4h_LL"] = {"mean": 5278.6, "reso": 8.5}
+signal["4h_DD"] = {"mean": 5279.1, "reso": 8.5}
+for key in signal.keys():
+    v = signal[key]
+    v["uppersb"] = [v["mean"] + 3 * v["reso"], 5450]
+    v["lowersb"] = [5200, v["mean"] - 3 * v["reso"]]
+
+cut = {}
+for key in signal.keys():
+    cut[key] = {
+        "highbdt": "B_PVFit_M[0]>5350 && B_PVFit_M[0]<5565 && response>-0.3",
+        "lowbdt": "B_PVFit_M[0]>5350 && B_PVFit_M[0]<5565 && response<-0.3",
+        "lowersb": "B_PVFit_M[0]>"
+        + str(signal[key]["lowersb"][0])
+        + " && B_PVFit_M[0]<"
+        + str(signal[key]["lowersb"][1]),
+        "uppersb": "B_PVFit_M[0]>"
+        + str(signal[key]["uppersb"][0])
+        + " && B_PVFit_M[0]<"
+        + str(signal[key]["uppersb"][1]),
+		"nominal": "B_PVFit_M[0]>5350 && B_PVFit_M[0]<5565",
+    }
+    cut[key]["loweranduppersb"] = cut[key]["lowersb"] + " || " + cut[key]["uppersb"]
+
+
+
+rule all:
+    input:
+        expand(
+            "bkgDPhist_{cat}/b2dd0k0_bkgoutput_{y}_{b}_{t}.root",
+            cat=bkgcat,
+            y=run,
+            b=mode,
+            t=tracktype,
+        ),
+
+
+rule meerkat:
+    input:
+        script="myb2dd0k0bkg.py",
+    output:
+        "bkgDPhist_{cat}/b2dd0k0_bkgoutput_{y}_{b}_{t}.root",
+    params:
+        cut_keys=lambda wildcards: cut[f"{wildcards.b}_{wildcards.t}"][wildcards.cat],
+    shell:
+        "bash -c 'source /cvmfs/sft.cern.ch/lcg/views/setupViews.sh LCG_96b x86_64-centos7-gcc9-opt && python {input.script} {wildcards.y}_{wildcards.b}_{wildcards.t} \"{params.cut_keys}\" {wildcards.cat}' "
